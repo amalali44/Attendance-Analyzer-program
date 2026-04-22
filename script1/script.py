@@ -198,5 +198,5 @@ def main():
     print(f"Saved updated registration to: {args.registered_out}")
 
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()

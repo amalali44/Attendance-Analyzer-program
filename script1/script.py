@@ -1,7 +1,6 @@
 import argparse
 import re
-from openpyxl import load_workbook
-from openpyxl.styles import PatternFill
+import csv
 
 
 def normalize_name(name):
@@ -48,61 +47,88 @@ def find_column(headers, expected):
     return lower_map[expected.lower()]
 
 
+def load_csv_with_encoding(path):
+    """Try to load CSV/TSV with different encodings and delimiters"""
+    encodings = ['utf-16', 'utf-8', 'latin-1', 'cp1252']
+    delimiters = [',', '\t']
+    
+    for encoding in encodings:
+        try:
+            with open(path, 'r', newline='', encoding=encoding) as f:
+                content = f.read()
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+        
+        for delimiter in delimiters:
+            try:
+                rows = list(csv.reader(content.splitlines(), delimiter=delimiter))
+                if rows:
+                    return rows
+            except:
+                continue
+    
+    raise ValueError(f"Could not decode file {path} with any supported encoding/delimiter")
+
+
 def load_attendance(path):
-    wb = load_workbook(path)
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
+    rows = load_csv_with_encoding(path)
     
     # Skip first 8 rows and get header
-    if len(rows) <= 8:
+    if len(rows) <= 10:
         raise ValueError("File doesn't have enough rows")
     
-    headers = [h for h in rows[8] if h]
-    name_col = find_column(headers, "name")
+    headers = [h.strip() for h in rows[8] if h and h.strip()]
+    name_col = find_column(headers, "2. Participants")
     duration_col = find_column(headers, "in meeting duration")
     
     name_idx = headers.index(name_col)
     duration_idx = headers.index(duration_col)
     
     data = []
-    for row in rows[9:]:
-        if row[name_idx]:  # Skip empty rows
-            duration = parse_duration(row[duration_idx] if duration_idx < len(row) else None)
+    for row in rows[10:]:
+        if len(row) > name_idx and row[name_idx].strip():  # Skip empty rows
+            duration = parse_duration(row[duration_idx].strip() if duration_idx < len(row) else None)
             short = (duration or 0) < 30
             data.append({
-                "name": row[name_idx],
+                "name": row[name_idx].strip(),
                 "normalized_name": normalize_name(row[name_idx]),
                 "duration": duration,
                 "short": short
             })
     
-    return data, name_col, headers
+    return data, name_col, headers, rows
 
 
-def highlight_attendance(attendance_data, name_col, input_path, output_path):
-    wb = load_workbook(input_path)
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    headers = [h for h in rows[8] if h]
+def highlight_attendance(attendance_data, name_col, input_path, output_path, all_rows):
+    # For CSV, add a FLAG column to mark short attendance
+    headers = [h.strip() for h in all_rows[8] if h and h.strip()]
     name_idx = headers.index(name_col)
     
-    red_fill = PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid")
+    # Add a FLAG column header if not present
+    if "FLAG" not in headers:
+        all_rows[8].append("FLAG")
     
+    # Mark short attendance rows
     data_idx = 0
-    for row_idx in range(10, ws.max_row + 1):
+    for row_idx in range(9, min(9 + len(attendance_data), len(all_rows))):
+        # Ensure row has enough columns
+        while len(all_rows[row_idx]) <= len(headers):
+            all_rows[row_idx].append('')
+        
         if data_idx < len(attendance_data) and attendance_data[data_idx]["short"]:
-            ws.cell(row=row_idx, column=name_idx + 1).fill = red_fill
+            all_rows[row_idx][len(headers)] = "SHORT"
         data_idx += 1
     
-    wb.save(output_path)
+    # Write to output
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerows(all_rows)
 
 
 def load_registered(path):
-    wb = load_workbook(path)
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
+    rows = load_csv_with_encoding(path)
     
-    headers = rows[0]
+    headers = [h.strip() for h in rows[0] if h and h.strip()]
     name_col = find_column(headers, "name")
     score_col = find_column(headers, "score")
     
@@ -111,14 +137,14 @@ def load_registered(path):
     
     data = []
     for row in rows[1:]:
-        if row[name_idx]:
+        if len(row) > name_idx and row[name_idx].strip():
             data.append({
-                "name": row[name_idx],
+                "name": row[name_idx].strip(),
                 "normalized_name": normalize_name(row[name_idx]),
-                "score": row[score_idx] if score_idx < len(row) else None
+                "score": row[score_idx].strip() if score_idx < len(row) else None
             })
     
-    return data, name_col, score_col, headers
+    return data, name_col, score_col, headers, rows
 
 
 def score_registered(attendance_data, registered_data, registered_name_col, score_col):
@@ -131,44 +157,46 @@ def score_registered(attendance_data, registered_data, registered_name_col, scor
     return registered_data
 
 
-
 def main():
     parser = argparse.ArgumentParser(
         description="Parse Teams attendance, highlight short attendees, and update registration scores."
     )
-    parser.add_argument("attendance_file", help="Excel file exported from Teams attendance")
-    parser.add_argument("registered_file", help="Excel file with registered attendees")
+    parser.add_argument("attendance_file", help="CSV/TSV file exported from Teams attendance")
+    parser.add_argument("registered_file", help="CSV/TSV file with registered attendees")
     parser.add_argument(
         "--attendance-out",
-        default="attendance_highlighted.xlsx",
-        help="Output Excel file for highlighted attendance",
+        default="attendance_highlighted.csv",
+        help="Output CSV file for highlighted attendance",
     )
     parser.add_argument(
         "--registered-out",
-        default="registered_scored.xlsx",
-        help="Output Excel file for updated registration",
+        default="registered_scored.csv",
+        help="Output CSV file for updated registration",
     )
     args = parser.parse_args()
 
-    attendance_data, attendance_name_col, _ = load_attendance(args.attendance_file)
-    highlight_attendance(attendance_data, attendance_name_col, args.attendance_file, args.attendance_out)
+    attendance_data, attendance_name_col, _, all_rows = load_attendance(args.attendance_file)
+    highlight_attendance(attendance_data, attendance_name_col, args.attendance_file, args.attendance_out, all_rows)
 
-    registered_data, reg_name_col, reg_score_col, reg_headers = load_registered(args.registered_file)
+    registered_data, reg_name_col, reg_score_col, reg_headers, reg_rows = load_registered(args.registered_file)
     registered_data = score_registered(attendance_data, registered_data, reg_name_col, reg_score_col)
     
     # Write updated registered file
-    wb = load_workbook(args.registered_file)
-    ws = wb.active
-    
     score_col_idx = reg_headers.index(reg_score_col)
-    for row_idx, item in enumerate(registered_data, start=2):
-        ws.cell(row=row_idx, column=score_col_idx + 1).value = item["score"]
+    for item_idx, item in enumerate(registered_data):
+        if item_idx + 1 < len(reg_rows):
+            # Ensure row has enough columns
+            while len(reg_rows[item_idx + 1]) <= score_col_idx:
+                reg_rows[item_idx + 1].append('')
+            reg_rows[item_idx + 1][score_col_idx] = item["score"]
     
-    wb.save(args.registered_out)
+    with open(args.registered_out, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerows(reg_rows)
 
     print(f"Saved highlighted attendance to: {args.attendance_out}")
     print(f"Saved updated registration to: {args.registered_out}")
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

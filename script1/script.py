@@ -41,15 +41,20 @@ def parse_duration(value):
 
 
 def find_column(headers, expected):
-    lower_map = {h.lower(): h for h in headers if h}
-    if expected.lower() not in lower_map:
-        raise KeyError(f"Missing required column '{expected}'. Available: {headers}")
-    return lower_map[expected.lower()]
+    lower = expected.lower()
+    normalized = [h for h in headers if h]
+    exact_match = {h.lower(): h for h in normalized}
+    if lower in exact_match:
+        return exact_match[lower]
+    for h in normalized:
+        if lower in h.lower():
+            return h
+    raise KeyError(f"Missing required column '{expected}'. Available: {headers}")
 
 
 def load_csv_with_encoding(path):
     """Try to load CSV/TSV with different encodings and delimiters"""
-    encodings = ['utf-16', 'utf-8', 'latin-1', 'cp1252']
+    encodings = ['utf-16', 'utf-8-sig', 'utf-8', 'latin-1', 'cp1252']
     delimiters = [',', '\t']
     
     for encoding in encodings:
@@ -62,7 +67,7 @@ def load_csv_with_encoding(path):
         for delimiter in delimiters:
             try:
                 rows = list(csv.reader(content.splitlines(), delimiter=delimiter))
-                if rows:
+                if rows and any(len(row) > 1 for row in rows):
                     return rows
             except:
                 continue
@@ -73,62 +78,36 @@ def load_csv_with_encoding(path):
 def load_attendance(path):
     rows = load_csv_with_encoding(path)
     
-    # Skip first 8 rows and get header
-    if len(rows) <= 10:
-        raise ValueError("File doesn't have enough rows")
-    
-    headers = [h.strip() for h in rows[8] if h and h.strip()]
-    name_col = find_column(headers, "2. Participants")
-    duration_col = find_column(headers, "in meeting duration")
-    
-    name_idx = headers.index(name_col)
-    duration_idx = headers.index(duration_col)
+    if len(rows) <= 9:
+        raise ValueError("Attendance file doesn't have enough rows")
     
     data = []
-    for row in rows[10:]:
-        if len(row) > name_idx and row[name_idx].strip():  # Skip empty rows
-            duration = parse_duration(row[duration_idx].strip() if duration_idx < len(row) else None)
-            short = (duration or 0) < 30
-            data.append({
-                "name": row[name_idx].strip(),
-                "normalized_name": normalize_name(row[name_idx]),
-                "duration": duration,
-                "short": short
-            })
+    for row in rows[9:]:
+        if row and row[0].strip():
+            name = row[0].strip()
+            duration_str = row[3].strip() if len(row) > 3 else None
+            duration = parse_duration(duration_str)
+            if (duration or 0) >= 30:
+                data.append({"normalized_name": normalize_name(name)})
     
-    return data, name_col, headers, rows
-
-
-def highlight_attendance(attendance_data, name_col, input_path, output_path, all_rows):
-    # For CSV, add a FLAG column to mark short attendance
-    headers = [h.strip() for h in all_rows[8] if h and h.strip()]
-    name_idx = headers.index(name_col)
-    
-    # Add a FLAG column header if not present
-    if "FLAG" not in headers:
-        all_rows[8].append("FLAG")
-    
-    # Mark short attendance rows
-    data_idx = 0
-    for row_idx in range(9, min(9 + len(attendance_data), len(all_rows))):
-        # Ensure row has enough columns
-        while len(all_rows[row_idx]) <= len(headers):
-            all_rows[row_idx].append('')
-        
-        if data_idx < len(attendance_data) and attendance_data[data_idx]["short"]:
-            all_rows[row_idx][len(headers)] = "SHORT"
-        data_idx += 1
-    
-    # Write to output
-    with open(output_path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerows(all_rows)
+    return data
 
 
 def load_registered(path):
     rows = load_csv_with_encoding(path)
     
-    headers = [h.strip() for h in rows[0] if h and h.strip()]
+    header_row = None
+    for candidate in [6, 0]:
+        if candidate < len(rows):
+            headers = [h.strip() for h in rows[candidate] if h and h.strip()]
+            if any('name' in h.lower() for h in headers) and any('score' in h.lower() for h in headers):
+                header_row = candidate
+                break
+    
+    if header_row is None:
+        raise KeyError("Could not find header row with 'Name' and 'Score' columns in registered file")
+    
+    headers = [h.strip() for h in rows[header_row]]
     name_col = find_column(headers, "name")
     score_col = find_column(headers, "score")
     
@@ -136,7 +115,7 @@ def load_registered(path):
     score_idx = headers.index(score_col)
     
     data = []
-    for row in rows[1:]:
+    for row in rows[header_row + 1:]:
         if len(row) > name_idx and row[name_idx].strip():
             data.append({
                 "name": row[name_idx].strip(),
@@ -144,58 +123,44 @@ def load_registered(path):
                 "score": row[score_idx].strip() if score_idx < len(row) else None
             })
     
-    return data, name_col, score_col, headers, rows
-
-
-def score_registered(attendance_data, registered_data, registered_name_col, score_col):
-    valid_names = {item["normalized_name"] for item in attendance_data if not item["short"]}
-    
-    for item in registered_data:
-        if item["normalized_name"] in valid_names:
-            item["score"] = 1
-    
-    return registered_data
+    return data, name_col, score_col, headers, rows, header_row, name_idx, score_idx
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Parse Teams attendance, highlight short attendees, and update registration scores."
+        description="Update registration scores based on Teams attendance (minimum 30 min required)."
     )
-    parser.add_argument("attendance_file", help="CSV/TSV file exported from Teams attendance")
-    parser.add_argument("registered_file", help="CSV/TSV file with registered attendees")
+    parser.add_argument("attendance_file", help="Teams attendance report (CSV/TSV)")
+    parser.add_argument("registered_file", help="Registration file (CSV/TSV)")
     parser.add_argument(
-        "--attendance-out",
-        default="attendance_highlighted.csv",
-        help="Output CSV file for highlighted attendance",
-    )
-    parser.add_argument(
-        "--registered-out",
+        "--output",
         default="registered_scored.csv",
-        help="Output CSV file for updated registration",
+        help="Output file for updated registration (will append .csv if missing)",
     )
     args = parser.parse_args()
 
-    attendance_data, attendance_name_col, _, all_rows = load_attendance(args.attendance_file)
-    highlight_attendance(attendance_data, attendance_name_col, args.attendance_file, args.attendance_out, all_rows)
+    if not args.output.lower().endswith('.csv'):
+        args.output = args.output.rstrip('.') + '.csv'
 
-    registered_data, reg_name_col, reg_score_col, reg_headers, reg_rows = load_registered(args.registered_file)
-    registered_data = score_registered(attendance_data, registered_data, reg_name_col, reg_score_col)
+    valid_attendees = load_attendance(args.attendance_file)
+    registered_data, reg_name_col, reg_score_col, reg_headers, reg_rows, reg_header_row, name_idx, score_idx = load_registered(args.registered_file)
     
-    # Write updated registered file
-    score_col_idx = reg_headers.index(reg_score_col)
+    valid_names = {item["normalized_name"] for item in valid_attendees}
+    for item in registered_data:
+        if item["normalized_name"] in valid_names:
+            item["score"] = 1
+    
     for item_idx, item in enumerate(registered_data):
-        if item_idx + 1 < len(reg_rows):
-            # Ensure row has enough columns
-            while len(reg_rows[item_idx + 1]) <= score_col_idx:
-                reg_rows[item_idx + 1].append('')
-            reg_rows[item_idx + 1][score_col_idx] = item["score"]
+        row_idx = reg_header_row + 1 + item_idx
+        if row_idx < len(reg_rows):
+            while len(reg_rows[row_idx]) <= score_idx:
+                reg_rows[row_idx].append('')
+            reg_rows[row_idx][score_idx] = item["score"]
     
-    with open(args.registered_out, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerows(reg_rows)
-
-    print(f"Saved highlighted attendance to: {args.attendance_out}")
-    print(f"Saved updated registration to: {args.registered_out}")
+    with open(args.output, 'w', newline='', encoding='utf-8') as f:
+        csv.writer(f).writerows(reg_rows)
+    
+    print(f"Updated registration saved to: {args.output}")
 
 
 if __name__ == "__main__":

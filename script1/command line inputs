@@ -1,0 +1,7 @@
+without .xlsx files
+1. python script.py "Virtual Training (VILT)_ Recording Daily Site Reports in PM4+ - Attendance report 4-02-26 (2).csv" "DSRpclltd-1dc0230e-7574-4287-929e-8b9087bc77d0_SessionRoster.csv"
+
+
+
+With .xlsx files
+python script.py "Virtual Training (VILT)_ Recording Daily Site Reports in PM4+ - Attendance report 4-02-26 (2).csv" "DSRpclltd-1dc0230e-7574-4287-929e-8b9087bc77d0_SessionRoster.xlsx"

@@ -32,22 +32,7 @@ def parse_name_parts(name: str):
     return first_initial, last
 
 
-def normalize_name(name):
-    """Return a (first_initial, last_name) tuple used as the match key."""
-    return parse_name_parts(name)
 
-
-def names_match(a, b) -> bool:
-    """Match two names by first initial + last name.
-
-    Handles nicknames (Nick/Nicholas both have initial "n") and
-    both "First Last" and "Last, First" formats.
-    """
-    a_initial, a_last = a
-    b_initial, b_last = b
-    if not a_last or not b_last:
-        return False
-    return a_initial == b_initial and a_last == b_last
 
 
 def parse_duration(value):
@@ -243,7 +228,7 @@ def load_attendance(path):
         print("  Note: No 'Duration' column found — treating all rows in attendance file as attendees.")
 
     data = []
-    for row_num, row in enumerate(rows[header_row_idx + 1:], start=header_row_idx + 2):
+    for row in rows[header_row_idx + 1:]:
         if not row or not row[0].strip():
             continue
         name = row[name_idx].strip() if name_idx < len(row) else ""
@@ -254,12 +239,11 @@ def load_attendance(path):
             duration_str = row[duration_idx].strip() if duration_idx < len(row) else ""
             duration = parse_duration(duration_str)
             if duration is None:
-                print(f"  Warning: could not parse duration '{duration_str}' for '{name}' (row {row_num}) — skipping")
                 continue
             if duration < 30:
                 continue  # Did not meet minimum attendance threshold
 
-        key = normalize_name(name)
+        key = parse_name_parts(name)
         if key not in {d["normalized_name"] for d in data} and key != (None, None) and key[1]:
             data.append({"normalized_name": key})
 
@@ -283,12 +267,11 @@ def load_registered(path):
         raise KeyError("Could not find a header row with both 'Name' and 'Score' columns in registered file")
 
     headers = [h.strip() for h in rows[header_row]]
-    name_col = find_column(headers, "name")
-    score_col = find_column(headers, "score")
+    find_column(headers, "name")  # Validate name column exists
+    find_column(headers, "score")  # Validate score column exists
     part1_col = find_column(headers, "part1")
 
-    name_idx = headers.index(name_col)
-    score_idx = headers.index(score_col)
+    name_idx = headers.index(find_column(headers, "name"))
     part1_idx = headers.index(part1_col)
 
     data = []
@@ -296,18 +279,11 @@ def load_registered(path):
         if len(row) > name_idx and row[name_idx].strip():
             data.append({
                 "name": row[name_idx].strip(),
-                "normalized_name": normalize_name(row[name_idx]),
+                "normalized_name": parse_name_parts(row[name_idx]),
                 "attended": False,
             })
 
-    return data, name_col, score_col, part1_col, headers, rows, header_row, name_idx, score_idx, part1_idx
-
-
-def normalize_output_path(output):
-    """Ensure output path ends with .csv without corrupting filenames."""
-    if not output.lower().endswith(('.csv', '.xlsx')):
-        output = output + '.csv'
-    return output
+    return data, part1_col, part1_idx, headers, rows, header_row
 
 
 def main():
@@ -323,29 +299,27 @@ def main():
     )
     args = parser.parse_args()
 
-    # FIX: safe extension handling — just append, never strip
-    args.output = normalize_output_path(args.output)
+    if not args.output.lower().endswith(('.csv', '.xlsx')):
+        args.output += '.csv'
 
     valid_attendees = load_attendance(args.attendance_file)
-    registered_data, reg_name_col, reg_score_col, reg_part1_col, reg_headers, reg_rows, reg_header_row, name_idx, score_idx, part1_idx = load_registered(args.registered_file)
+    registered_data, part1_col, part1_idx, headers, rows, header_row = load_registered(args.registered_file)
 
-    # Match attendees by name; use names_match for fuzzy First/Last name comparison.
     for item in registered_data:
         for attendee in valid_attendees:
-            if names_match(item["normalized_name"], attendee["normalized_name"]):
+            if item["normalized_name"] == attendee["normalized_name"]:
                 item["attended"] = True
                 break
 
-    # Write Part1 column (1 = attended >= 30 min, 0 = did not)
     for item_idx, item in enumerate(registered_data):
-        row_idx = reg_header_row + 1 + item_idx
-        if row_idx < len(reg_rows):
-            while len(reg_rows[row_idx]) <= part1_idx:
-                reg_rows[row_idx].append('')
-            reg_rows[row_idx][part1_idx] = 1 if item["attended"] else 0
+        row_idx = header_row + 1 + item_idx
+        if row_idx < len(rows):
+            while len(rows[row_idx]) <= part1_idx:
+                rows[row_idx].append('')
+            rows[row_idx][part1_idx] = 1 if item["attended"] else 0
 
     with open(args.output, 'w', newline='', encoding='utf-8') as f:
-        csv.writer(f).writerows(reg_rows)
+        csv.writer(f).writerows(rows)
 
     attended_count = sum(1 for item in registered_data if item["attended"])
     print(f"Updated registration saved to: {args.output}")

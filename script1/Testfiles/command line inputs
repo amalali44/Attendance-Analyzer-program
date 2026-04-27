@@ -1,0 +1,5 @@
+Test Prompts (without .xlsx files)
+
+python script.py "Testfiles/Virtual Training (VILT)_ Recording Daily Site Reports in PM4+ - Attendance report 4-02-26 (2).csv" "DSRpclltd-1dc0230e-7574-4287-929e-8b9087bc77d0_SessionRoster.csv"
+
+python script.py "Testfiles/Virtual Training (VILT)_ Creating & managing Subcontracts in PM4+ - Attendance report 4-17-26.csv" "Testfiles/subcontractspclltd-f5f47448-6850-402b-9385-af264a63b32c_SessionRoster.csv"

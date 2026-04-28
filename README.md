@@ -9,7 +9,7 @@ The Training Attendance Processing System is a Python utility designed to automa
 This tool automates the workflow of:
 1. Parsing Teams attendance reports or session roster files (CSV, TSV, or XLSX formats)
 2. Filtering participants who met the minimum 30-minute attendance threshold
-3. Matching attendees to registered participants using intelligent name normalization
+3. Matching attendees to registered participants using intelligent name normalization with full-name matching and backup initial+last name matching
 4. Updating the registration file to mark participants who attended
 
 ## System Requirements
@@ -83,33 +83,48 @@ The attendance report and registration file may list names in different formats:
 - **Case variations:** "nicholas lehman", "NICHOLAS LEHMAN", "nicholas lehman"
 - **Extra whitespace:** "Nicholas  Lehman" (double spaces)
 - **Nicknames:** "Nick Lehman" vs "Nicholas Lehman"
+- **Duplicates:** "Bruce Smith" vs "Bryce Smith" (same initial and last name)
 
-### Solution: First Initial + Last Name Matching
+### Solution: Full Name Matching with Backup
 
-The script implements an intelligent name matching algorithm that extracts the first initial and full last name:
+The script implements a two-tier intelligent name matching algorithm:
+
+#### Primary Matching: Full Name Normalization
+Names are normalized to a standardized "first last" format (lowercased) for exact matching. This distinguishes individuals with the same first initial and last name.
 
 **Parsing Logic:**
-- **"First Last" format:** Extract first letter of first name + rest as last name
+- **"First Last" format:** Convert to "first last" lowercase
+  - "Nicholas Lehman" → "nicholas lehman"
+  - "Nick Lehman" → "nick lehman"
+- **"Last, First" format:** Reorder to "first last" lowercase
+  - "Lehman, Nicholas" → "nicholas lehman"
+  - "Lehman, Nick" → "nick lehman"
+
+#### Backup Matching: First Initial + Last Name
+If no exact full-name match is found, the script falls back to matching on first initial + last name. This handles cases where attendance reports use abbreviated names.
+
+**Backup Parsing Logic:**
+- Extract first letter of first name + full last name
   - "Nicholas Lehman" → `("n", "lehman")`
-  - "Nick Lehman" → `("n", "lehman")`
-- **"Last, First" format:** Everything before comma is last name + first letter of first name
-  - "Lehman, Nicholas" → `("n", "lehman")`
-  - "Lehman, Nick" → `("n", "lehman")`
+  - "B. Smith" → `("b", "smith")`
 
 **Example Matching:**
 | Attendance | Registration | Match? | Reason |
 |-----------|--------------|--------|--------|
-| Nicholas Lehman | Lehman, Nicholas | ✓ Yes | Both → ("n", "lehman") |
-| Nick Lehman | Lehman, Nicholas | ✓ Yes | Both → ("n", "lehman") |
-| jim jones | JONES, JIM | ✓ Yes | Both → ("j", "jones") |
-| Pena Murillo, Nestor | Nestor Pena Murillo | ✓ Yes | Both → ("n", "pena murillo") |
+| Nicholas Lehman | Lehman, Nicholas | ✓ Yes | Primary: Both → "nicholas lehman" |
+| Bruce Smith | Smith, Bruce | ✓ Yes | Primary: Both → "bruce smith" |
+| Bryce Smith | Smith, Bryce | ✓ Yes | Primary: Both → "bryce smith" |
+| B. Smith | Smith, Bruce | ✓ Yes | Primary fails ("b. smith" ≠ "bruce smith"), Backup: ("b", "smith") |
+| jim jones | JONES, JIM | ✓ Yes | Primary: Both → "jim jones" |
+| Pena Murillo, Nestor | Nestor Pena Murillo | ✓ Yes | Primary: Both → "nestor pena murillo" |
 
 **Important Notes:**
-- **Nickname Tolerance:** Matches work for different spelling of first names (Nick/Nicholas) using first initial
+- **Primary Priority:** Exact full-name matches are preferred over backup matches
+- **Duplicate Handling:** Individuals with the same first initial and last name (e.g., Bruce Smith and Bryce Smith) are distinguished by full name
+- **Nickname Tolerance:** Backup matching works for abbreviated first names (e.g., "B. Smith" matches "Bruce Smith")
 - **Name Order Independence:** Works regardless of "First Last" or "Last, First" format
 - **Case Insensitivity:** All matching is case-insensitive
 - **Whitespace Tolerance:** Extra whitespace is automatically handled
-- **Exact Last Name Match Required:** Last names must match exactly (after normalization)
 
 ## Output File
 
@@ -166,7 +181,7 @@ python script.py Teams-Attendance.csv Roster.csv --output results/scored-roster.
 6. Normalize names using first initial + last name approach
 7. Create set of valid attendees
 
-### Step 2: Parse Registration File
+### Step 2: Parse PCL Learn Registration File
 1. Load registration file (auto-detects CSV/TSV/XLSX and encoding)
 2. Locate header row containing both "Name" and "Score" columns
 3. Identify required columns: "Name", "Score", "Part1"
@@ -174,8 +189,9 @@ python script.py Teams-Attendance.csv Roster.csv --output results/scored-roster.
 
 ### Step 3: Match Attendees to Registered Participants
 1. For each registered participant:
-   - Normalize their name (first initial + last name)
-   - Check if this normalized name exists in the valid attendees set
+   - Normalize their name to full "first last" format
+   - Check if this normalized name exactly matches any valid attendee's normalized name
+   - If no exact match, check if first initial + last name matches any attendee's backup key
    - Mark as `attended = True` if match found, `False` otherwise
 2. Build correspondence between registered participants and attendance
 

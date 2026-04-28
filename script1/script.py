@@ -1,20 +1,19 @@
-import argparse
-import re
-import csv
-import os
-
+import argparse, re, csv, os
 
 def parse_name_parts(name: str):
-    """Return (first_initial, last_name) from either "First Last" or "Last, First".
+    """Return normalized full name as "first last" lowercase, or empty string if invalid.
+
+    Handles "First Last" or "Last, First" formats.
 
     Examples:
-      "Nicholas Lehman"      -> ("n", "lehman")
-      "Nick Lehman"          -> ("n", "lehman")
-      "Lehman, Nicholas"     -> ("n", "lehman")
-      "Pena Murillo, Nestor" -> ("n", "pena murillo")
+      "Nicholas Lehman"      -> "nicholas lehman"
+      "Nick Lehman"          -> "nick lehman"
+      "Lehman, Nicholas"     -> "nicholas lehman"
+      "Pena Murillo, Nestor" -> "nestor pena murillo"
+      "B. Smith"             -> "b. smith"
     """
     if not name:
-        return None, None
+        return ""
     cleaned = re.sub(r"\s+", " ", str(name)).strip()
 
     if "," in cleaned:
@@ -28,8 +27,21 @@ def parse_name_parts(name: str):
         first = tokens[0].lower()
         last = " ".join(t.lower() for t in tokens[1:]) if len(tokens) > 1 else ""
 
-    first_initial = first[0] if first else ""
-    return first_initial, last
+    full = f"{first} {last}".strip()
+    return full
+
+
+def get_backup_key(full_name: str):
+    """Return (first_initial, last_name) tuple for backup matching."""
+    if not full_name:
+        return ("", "")
+    parts = full_name.split()
+    if not parts:
+        return ("", "")
+    first = parts[0]
+    last = " ".join(parts[1:]) if len(parts) > 1 else ""
+    initial = first[0] if first else ""
+    return (initial, last)
 
 
 
@@ -244,7 +256,7 @@ def load_attendance(path):
                 continue  # Did not meet minimum attendance threshold
 
         key = parse_name_parts(name)
-        if key not in {d["normalized_name"] for d in data} and key != (None, None) and key[1]:
+        if key and key not in {d["normalized_name"] for d in data}:
             data.append({"normalized_name": key})
 
     return data
@@ -306,8 +318,10 @@ def main():
     registered_data, part1_col, part1_idx, headers, rows, header_row = load_registered(args.registered_file)
 
     for item in registered_data:
+        item_backup = get_backup_key(item["normalized_name"])
         for attendee in valid_attendees:
-            if item["normalized_name"] == attendee["normalized_name"]:
+            attendee_backup = get_backup_key(attendee["normalized_name"])
+            if item["normalized_name"] == attendee["normalized_name"] or item_backup == attendee_backup:
                 item["attended"] = True
                 break
 

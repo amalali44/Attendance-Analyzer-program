@@ -12,22 +12,30 @@ def parse_name_parts(name: str):
       "Pena Murillo, Nestor" -> "nestor pena murillo"
       "B. Smith"             -> "b. smith"
     """
+    suffixes = ['jr', 'sr', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'jr.', 'sr.', 'iii.', 'iv.', 'v.', 'vi.', 'vii.', 'viii.', 'ix.', 'x.']
+    
+    def clean_parts(parts):
+        return [p for p in parts if p.lower() not in suffixes and len(p) > 1]
+    
     if not name:
         return ""
     cleaned = re.sub(r"\s+", " ", str(name)).strip()
 
     if "," in cleaned:
-        # "Last, First" — everything before first comma is the last name
         parts = cleaned.split(",", 1)
-        last = parts[0].strip().lower()
-        first = parts[1].strip().lower()
+        last_parts = clean_parts(parts[0].strip().split())
+        first_parts = clean_parts(parts[1].strip().split())
+        last = " ".join(last_parts)
+        first = " ".join(first_parts)
     else:
-        # "First Last..." — first token is first name, rest is last name
         tokens = cleaned.split()
-        first = tokens[0].lower()
-        last = " ".join(t.lower() for t in tokens[1:]) if len(tokens) > 1 else ""
+        cleaned_tokens = clean_parts(tokens)
+        first = cleaned_tokens[0] if cleaned_tokens else ""
+        last = " ".join(cleaned_tokens[1:]) if len(cleaned_tokens) > 1 else ""
 
-    full = f"{first} {last}".strip()
+    if last:
+        last = last.split()[0]
+    full = f"{first} {last}".strip().lower()
     return full
 
 
@@ -306,13 +314,13 @@ def main():
     parser.add_argument("registered_file", help="Registration/roster file (.csv, .tsv, or .xlsx)")
     parser.add_argument(
         "--output",
-        default="registered_scored.csv",
-        help="Output file for updated registration (default: registered_scored.csv)",
+        default="registered_scored.xlsx",
+        help="Output file for updated registration (default: registered_scored.xlsx)",
     )
     args = parser.parse_args()
 
     if not args.output.lower().endswith(('.csv', '.xlsx')):
-        args.output += '.csv'
+        args.output += '.xlsx'
 
     valid_attendees = load_attendance(args.attendance_file)
     registered_data, part1_col, part1_idx, headers, rows, header_row = load_registered(args.registered_file)
@@ -321,7 +329,9 @@ def main():
         item_backup = get_backup_key(item["normalized_name"])
         for attendee in valid_attendees:
             attendee_backup = get_backup_key(attendee["normalized_name"])
-            if item["normalized_name"] == attendee["normalized_name"] or item_backup == attendee_backup:
+            if (item["normalized_name"] == attendee["normalized_name"] or 
+                item_backup == attendee_backup or 
+                item_backup[1] in attendee["normalized_name"]):
                 item["attended"] = True
                 break
 
@@ -332,8 +342,22 @@ def main():
                 rows[row_idx].append('')
             rows[row_idx][part1_idx] = 1 if item["attended"] else 0
 
-    with open(args.output, 'w', newline='', encoding='utf-8') as f:
-        csv.writer(f).writerows(rows)
+    if args.output.lower().endswith('.xlsx'):
+        try:
+            import openpyxl
+        except ImportError as exc:
+            raise ImportError(
+                "openpyxl is required to write .xlsx files. Install it with "
+                "`pip install openpyxl`."
+            ) from exc
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        for row in rows:
+            ws.append(row)
+        wb.save(args.output)
+    else:
+        with open(args.output, 'w', newline='', encoding='utf-8') as f:
+            csv.writer(f).writerows(rows)
 
     attended_count = sum(1 for item in registered_data if item["attended"])
     print(f"Updated registration saved to: {args.output}")

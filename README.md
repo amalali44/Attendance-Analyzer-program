@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Training Attendance Processing System is a Python utility designed to automatically process training attendance data (from Microsoft Teams or session rosters) and correlate it with participant registration records. The script matches attendees who participated in a training session with registered participants and marks them in the registration database.
+The Training Attendance Processing System is a Python utility designed to automatically process training attendance data from Microsoft Teams and correlate it with participant registration records. The script matches attendees who participated in a training session with registered participants and marks them in the registration database.
 
 ## Purpose
 
@@ -29,16 +29,11 @@ This tool automates the workflow of:
 
 ## Input Files
 
-The script accepts two input files in CSV, TSV, or XLSX formats:
-
 ### File 1: Attendance Report
 
-**Formats Supported:** CSV, TSV, or XLSX
+**Formats Supported:** 
+- The script accepts two input files in CSV, TSV, or XLSX formats:
 
-**Source Options:**  
-- Microsoft Teams meeting attendance export
-- Session roster file (bulk update format)
-- Any file with a "Name" column
 
 **Required Columns:**
 - `Name` - Participant name (required)
@@ -61,9 +56,8 @@ The script intelligently parses various duration formats:
 
 ### File 2: Registration/Roster File
 
-**Formats Supported:** CSV, TSV, or XLSX
+**Formats Supported:** The script accepts two input files in CSV, TSV, or XLSX formats:
 
-**Source:** Learning Management System (LMS) or registry system
 
 **Required Columns:**
 - `Name` - Participant name (required)
@@ -84,21 +78,27 @@ The attendance report and registration file may list names in different formats:
 - **Extra whitespace:** "Nicholas  Lehman" (double spaces)
 - **Nicknames:** "Nick Lehman" vs "Nicholas Lehman"
 - **Duplicates:** "Bruce Smith" vs "Bryce Smith" (same initial and last name)
+- **Suffixes:** "James Strydom Jr" vs "James Strydom"
+- **Middle names:** "James M Strydom" vs "James Strydom"
+- **Compound last names:** "Maxime Otali" vs "Otali Ondimba"
 
-### Solution: Full Name Matching with Backup
-
-The script implements a two-tier intelligent name matching algorithm:
+### Solution: Enhanced Full Name Matching with Backup
 
 #### Primary Matching: Full Name Normalization
-Names are normalized to a standardized "first last" format (lowercased) for exact matching. This distinguishes individuals with the same first initial and last name.
+Names are normalized to a standardized "first last" format (lowercased) for exact matching. This distinguishes individuals with the same first initial and last name. The normalization process includes:
+- Removing suffixes (Jr., Sr., III, etc.)
+- Removing one-letter middle names (initials)
+- Handling compound last names by using the primary last name component
 
 **Parsing Logic:**
-- **"First Last" format:** Convert to "first last" lowercase
+- **"First Last" format:** Convert to "first last" lowercase, removing suffixes and one-letter middle names
   - "Nicholas Lehman" → "nicholas lehman"
   - "Nick Lehman" → "nick lehman"
-- **"Last, First" format:** Reorder to "first last" lowercase
+  - "James M Strydom Jr" → "james strydom"
+- **"Last, First" format:** Reorder to "first last" lowercase, removing suffixes and one-letter middle names
   - "Lehman, Nicholas" → "nicholas lehman"
   - "Lehman, Nick" → "nick lehman"
+  - "Strydom Jr, James M" → "james strydom"
 
 #### Backup Matching: First Initial + Last Name
 If no exact full-name match is found, the script falls back to matching on first initial + last name. This handles cases where attendance reports use abbreviated names.
@@ -108,29 +108,35 @@ If no exact full-name match is found, the script falls back to matching on first
   - "Nicholas Lehman" → `("n", "lehman")`
   - "B. Smith" → `("b", "smith")`
 
+#### Additional Fallback: Last Name Containment
+For complex name variations, especially with compound last names, the script includes an additional fallback where the primary last name from the registration is checked against the full attendance name string.
+
 **Example Matching:**
 | Attendance | Registration | Match? | Reason |
 |-----------|--------------|--------|--------|
 | Nicholas Lehman | Lehman, Nicholas | ✓ Yes | Primary: Both → "nicholas lehman" |
-| Bruce Smith | Smith, Bruce | ✓ Yes | Primary: Both → "bruce smith" |
 | Bryce Smith | Smith, Bryce | ✓ Yes | Primary: Both → "bryce smith" |
 | B. Smith | Smith, Bruce | ✓ Yes | Primary fails ("b. smith" ≠ "bruce smith"), Backup: ("b", "smith") |
 | jim jones | JONES, JIM | ✓ Yes | Primary: Both → "jim jones" |
 | Pena Murillo, Nestor | Nestor Pena Murillo | ✓ Yes | Primary: Both → "nestor pena murillo" |
+| James M Strydom Jr | Strydom, James | ✓ Yes | Primary: Both → "james strydom" (suffixes and middle initials removed) |
+| Maxime Otali Ondimba | Otali Ondimba, Maxime | ✓ Yes | Primary: Both → "maxime otali" (compound last name truncated), Fallback: "otali" in "maxime otali ondimba" |
 
 **Important Notes:**
 - **Primary Priority:** Exact full-name matches are preferred over backup matches
 - **Duplicate Handling:** Individuals with the same first initial and last name (e.g., Bruce Smith and Bryce Smith) are distinguished by full name
 - **Nickname Tolerance:** Backup matching works for abbreviated first names (e.g., "B. Smith" matches "Bruce Smith")
 - **Name Order Independence:** Works regardless of "First Last" or "Last, First" format
-- **Case Insensitivity:** All matching is case-insensitive
 - **Whitespace Tolerance:** Extra whitespace is automatically handled
+- **Suffix Removal:** Common suffixes like Jr., Sr., III, IV, etc. are removed
+- **Middle Name Handling:** One-letter middle names (initials) are omitted to improve matching
+- **Compound Last Names:** For names with multiple last name components, matching focuses on the primary last name to handle variations
 
 ## Output File
 
-### Updated Registration (`registered_scored.csv`)
+### Updated Registration (`registered_scored.xlsx`)
 
-**Format:** Comma-separated values, UTF-8 encoded
+**Format:** Excel spreadsheet (.xlsx)
 
 **Content:** Copy of the registration file with the `Part1` column updated
 
@@ -157,7 +163,7 @@ python script.py Teams-Attendance-2026-04-08.csv Session-Roster.csv
 ```
 
 This generates:
-- `registered_scored.csv` (default output file)
+- `registered_scored.xlsx` (default output file)
 
 ### Advanced Usage with Custom Output Path
 
@@ -167,7 +173,7 @@ python script.py <attendance_file> <registered_file> --output <output_file>
 
 **Example:**
 ```bash
-python script.py Teams-Attendance.csv Roster.csv --output results/scored-roster.csv
+python script.py Teams-Attendance.csv Roster.csv --output results/scored-roster.xlsx
 ```
 
 ## Processing Algorithm
@@ -189,9 +195,10 @@ python script.py Teams-Attendance.csv Roster.csv --output results/scored-roster.
 
 ### Step 3: Match Attendees to Registered Participants
 1. For each registered participant:
-   - Normalize their name to full "first last" format
+   - Normalize their name to full "first last" format (removing suffixes, one-letter middle names, and truncating compound last names)
    - Check if this normalized name exactly matches any valid attendee's normalized name
    - If no exact match, check if first initial + last name matches any attendee's backup key
+   - As a final fallback, check if the primary last name from registration appears in the attendee's normalized name
    - Mark as `attended = True` if match found, `False` otherwise
 2. Build correspondence between registered participants and attendance
 
@@ -205,16 +212,6 @@ python script.py Teams-Attendance.csv Roster.csv --output results/scored-roster.
 1. Write updated registration file with modified `Part1` column
 2. Display summary: "X of Y registered attendees marked in Part1"
 
-## Error Handling
-
-### Common Errors and Solutions
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Could not decode file` | Unsupported encoding/format | Try converting file to CSV or XLSX |
-| `Missing required column 'Name'` | Wrong file format | Verify file has a "Name" column in header |
-| `Could not decode file with any supported encoding` | Corrupted or unusual encoding | Re-export the file from the source system |
-| `Could not find a header row with both 'Name' and 'Score' columns` | Registration format not recognized | Verify registration file format is correct |
 
 ## File Format Support
 
@@ -278,17 +275,3 @@ You conducted a 1-hour training session in Microsoft Teams with 50 registered pa
 
 1. **Name Matching:** Script uses first initial + last name. Names must have a recognizable last name to match (e.g., "John A" vs "A, John" may not match)
 2. **Duplicate Names:** If multiple participants have the same first initial and last name, they will all be marked with the same attendance status
-3. **Minimum Duration Threshold:** Hard-coded to 30 minutes; cannot be customized without modifying the source code
-4. **No Duration Column:** If the attendance file has no duration column, all listed rows are treated as attendees (no time threshold applied)
-5. **Column Header Case Sensitivity:** Header matching is case-insensitive and works with partial matches (e.g., "name" matches "Full Name", "Name [Do not update]", etc.)
-6. **Duration Precision:** Duration values < 30 minutes are filtered out entirely; no partial credit
-
-## Support and Troubleshooting
-
-### Debug Information
-
-To troubleshoot issues, try:
-1. Check file encoding: `file -b --mime-encoding <filename>`
-2. Review first few rows to verify structure: `head -20 <filename>`
-3. Verify both "Name" and "Part1" columns exist in registration file
-4. Check that attendance file has at least one row with data

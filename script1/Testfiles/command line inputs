@@ -6,7 +6,7 @@ python script.py "Testfiles/Virtual Training (VILT)_ Recording Daily Site Report
 
 
 - Overview and Navigation April 8, 2026 (both .csv)
-python script.py "Testfiles/Virtual Training (VILT)_ Overview and Navigation concepts in PM4+  - Attendance report 4-08-26 (1).csv" "Testfiles/workspaces/training-attendance-python-script/script1/Testfiles/pclltd-01b9b04f-d831-45f9-9c56-ed36c47c88a2_SessionRoster.csv"
+python script.py "Testfiles/Virtual Training (VILT)_ Overview and Navigation concepts in PM4+  - Attendance report 4-08-26 (1).csv" "Testfiles/pclltd-01b9b04f-d831-45f9-9c56-ed36c47c88a2_SessionRoster.csv"
 
 
 - Subcontracts April 17, 2026 (both .csv)
@@ -14,5 +14,5 @@ python script.py "Testfiles/Virtual Training (VILT)_ Creating & managing Subcont
 
 
 - Overview and Navigation April 28, 2026 (.xlsx and .csv)
-python script.py "" "Testfiles/pclltd-935b20c1-1325-4acf-883d-5888c206467d_SessionRoster.xlsx"
+python script.py "Testfiles/Virtual Training (VILT)_ Overview and Navigation concepts in PM4+ - Attendance report 4-28-26.csv" "Testfiles/pclltd-935b20c1-1325-4acf-883d-5888c206467d_SessionRoster.xlsx"
 

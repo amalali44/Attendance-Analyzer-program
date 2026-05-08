@@ -22,10 +22,20 @@ This tool automates the workflow of:
 
 1. Clone or download the repository
 2. Ensure Python 3.6+ is installed on your system
-3. (Optional) Install openpyxl for .xlsx file support:
+3. Install required packages:
    ```bash
-   pip install openpyxl
+   pip install openpyxl flask
    ```
+   - `openpyxl` is required to read/write .xlsx files
+   - `flask` is required for the web interface
+
+4. For GUI support (desktop only):
+   - **Linux:** Most distributions include tkinter. If not, install it:
+     ```bash
+     sudo apt-get install python3-tk
+     ```
+   - **Windows:** tkinter is included with Python
+   - **macOS:** tkinter is included with Python
 
 ## Input Files
 
@@ -151,7 +161,43 @@ For complex name variations, especially with compound last names, the script inc
 
 ## Usage
 
-### Basic Usage
+### Web Interface (Recommended for All Users)
+
+For the most user-friendly experience, use the web interface that works in any environment:
+
+```bash
+python web_gui.py
+```
+
+**Features:**
+- **Browser-based GUI**: Works on any device with a web browser
+- **Drag & Drop File Upload**: Simply drag files into the upload areas
+- **Real-time Progress**: See analysis progress as it happens
+- **Download Results**: Download the processed file directly from your browser
+- **No Installation Required**: Works in headless environments (servers, containers)
+
+**How to Use:**
+1. Run `python web_gui.py`
+2. Open your browser to `http://localhost:5000` (opens automatically)
+3. Upload your attendance report and registration file
+4. Click "Analyze Attendance"
+5. Download the results when complete
+
+### GUI Mode (Desktop Only)
+
+For desktop users, a native GUI application is available:
+
+```bash
+python gui.py
+```
+
+**Requirements:** Requires a graphical desktop environment (Windows, macOS, or Linux with X11)
+
+### Command Line Mode
+
+For advanced users and automation, use the command-line interface:
+
+#### Basic Usage
 
 ```bash
 python script.py <attendance_file> <registered_file>
@@ -165,7 +211,7 @@ python script.py Teams-Attendance-2026-04-08.csv Session-Roster.csv
 This generates:
 - `registered_scored.xlsx` (default output file)
 
-### Advanced Usage with Custom Output Path
+#### Advanced Usage with Custom Output Path
 
 ```bash
 python script.py <attendance_file> <registered_file> --output <output_file>

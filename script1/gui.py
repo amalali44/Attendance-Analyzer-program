@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 # Import the core functions from script.py
-from script import load_attendance, load_registered, get_backup_key
+from script import load_attendance, load_registered
 
 
 class AttendanceAnalyzerGUI:
@@ -238,12 +238,8 @@ class AttendanceAnalyzerGUI:
             self.log_message("\n[3/4] Matching attendees to registrations...")
             matched_count = 0
             for item in registered_data:
-                item_backup = get_backup_key(item["normalized_name"])
                 for attendee in valid_attendees:
-                    attendee_backup = get_backup_key(attendee["normalized_name"])
-                    if (item["normalized_name"] == attendee["normalized_name"] or 
-                        item_backup == attendee_backup or 
-                        item_backup[1] in attendee["normalized_name"]):
+                    if item["normalized_name"] == attendee["normalized_name"]:
                         item["attended"] = True
                         matched_count += 1
                         break
@@ -357,12 +353,8 @@ def run_command_line_interface():
         print("Matching attendees to registrations...")
         matched_count = 0
         for item in registered_data:
-            item_backup = get_backup_key(item["normalized_name"])
             for attendee in valid_attendees:
-                attendee_backup = get_backup_key(attendee["normalized_name"])
-                if (item["normalized_name"] == attendee["normalized_name"] or 
-                    item_backup == attendee_backup or 
-                    item_backup[1] in attendee["normalized_name"]):
+                if item["normalized_name"] == attendee["normalized_name"]:
                     item["attended"] = True
                     matched_count += 1
                     break

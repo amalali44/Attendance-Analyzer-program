@@ -328,8 +328,12 @@ def download():
     return "File not found", 404
 
 def main():
-    print("Starting web GUI on http://localhost:5000")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    """Start the Flask web server."""
+    print("Starting Training Attendance Analyzer Web Server...")
+    print("\nWeb Interface: http://localhost:5000")
+    print("Network Access: http://<your-ip>:5000")
+    print("\nPress Ctrl+C to stop the server")
+    app.run(debug=False, host='0.0.0.0', port=5000, use_reloader=False)
 
 if __name__ == '__main__':
     main()

@@ -344,7 +344,7 @@ def main():
 
     if args.output.lower().endswith('.xlsx'):
         try:
-            import openpyxl
+            import openpyxl  # type: ignore[import]
         except ImportError as exc:
             raise ImportError(
                 "openpyxl is required to write .xlsx files. Install it with "

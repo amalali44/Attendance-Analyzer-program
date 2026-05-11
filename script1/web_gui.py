@@ -1,8 +1,7 @@
 from flask import Flask, request, render_template_string, send_file
 import os
 import tempfile
-from script import load_attendance, load_registered, get_backup_key
-import csv
+from script import load_attendance, load_registered
 import openpyxl
 
 app = Flask(__name__)
@@ -289,16 +288,11 @@ def index():
                 valid_attendees = load_attendance(attendance_path)
                 registered_data, part1_col, part1_idx, headers, rows, header_row = load_registered(registration_path)
                 
-                matched_count = 0
+                # Match attendees to registered participants
                 for item in registered_data:
-                    item_backup = get_backup_key(item["normalized_name"])
                     for attendee in valid_attendees:
-                        attendee_backup = get_backup_key(attendee["normalized_name"])
-                        if (item["normalized_name"] == attendee["normalized_name"] or 
-                            item_backup == attendee_backup or 
-                            item_backup[1] in attendee["normalized_name"]):
+                        if item["normalized_name"] == attendee["normalized_name"]:
                             item["attended"] = True
-                            matched_count += 1
                             break
                 
                 for item_idx, item in enumerate(registered_data):

@@ -12,7 +12,7 @@ def parse_name_parts(name: str):
       "Pena Murillo, Nestor" -> "nestor pena murillo"
       "B. Smith"             -> "b. smith"
     """
-    suffixes = ['jr', 'sr', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'jr.', 'sr.', 'iii.', 'iv.', 'v.', 'vi.', 'vii.', 'viii.', 'ix.', 'x.']
+    suffixes = ['jr', 'sr', 'iii', 'iv', 'v', 'vi', 'vii', 'jr.', 'sr.', 'iv.', 'v.', 'vi.']
     
     def clean_parts(parts):
         return [p for p in parts if p.lower() not in suffixes and len(p) > 1]
@@ -344,7 +344,7 @@ def main():
 
     if args.output.lower().endswith('.xlsx'):
         try:
-            import openpyxl  # type: ignore[import]
+            import openpyxl
         except ImportError as exc:
             raise ImportError(
                 "openpyxl is required to write .xlsx files. Install it with "

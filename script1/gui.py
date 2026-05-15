@@ -4,9 +4,8 @@ import os
 import sys
 from pathlib import Path
 
-
 # Import the core functions from script.py
-from script import load_attendance, load_registered
+from script import load_attendance, load_registered, get_backup_key
 
 
 class AttendanceAnalyzerGUI:
@@ -61,7 +60,7 @@ class AttendanceAnalyzerGUI:
         # Registered File Section
         registered_frame = tk.LabelFrame(
             self.root,
-            text="Step 2: Select Registration File",
+            text="Step 2: Select PCL Learn Roster  File",
             font=("Arial", 10, "bold"),
             padx=10,
             pady=10
@@ -238,8 +237,12 @@ class AttendanceAnalyzerGUI:
             self.log_message("\n[3/4] Matching attendees to registrations...")
             matched_count = 0
             for item in registered_data:
+                item_backup = get_backup_key(item["normalized_name"])
                 for attendee in valid_attendees:
-                    if item["normalized_name"] == attendee["normalized_name"]:
+                    attendee_backup = get_backup_key(attendee["normalized_name"])
+                    if (item["normalized_name"] == attendee["normalized_name"] or 
+                        item_backup == attendee_backup or 
+                        item_backup[1] in attendee["normalized_name"]):
                         item["attended"] = True
                         matched_count += 1
                         break
@@ -353,8 +356,12 @@ def run_command_line_interface():
         print("Matching attendees to registrations...")
         matched_count = 0
         for item in registered_data:
+            item_backup = get_backup_key(item["normalized_name"])
             for attendee in valid_attendees:
-                if item["normalized_name"] == attendee["normalized_name"]:
+                attendee_backup = get_backup_key(attendee["normalized_name"])
+                if (item["normalized_name"] == attendee["normalized_name"] or 
+                    item_backup == attendee_backup or 
+                    item_backup[1] in attendee["normalized_name"]):
                     item["attended"] = True
                     matched_count += 1
                     break

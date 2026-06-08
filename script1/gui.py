@@ -5,8 +5,6 @@ import sys
 from pathlib import Path
 
 # Import the core functions from script.py
-from script import load_attendance, load_registered, get_backup_key
-
 
 class AttendanceAnalyzerGUI:
     def __init__(self, root):

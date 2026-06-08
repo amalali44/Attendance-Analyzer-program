@@ -1,23 +1,53 @@
-import argparse, re, csv, os
+import argparse
+import re
+import csv
+import os
 
 
+def parse_name_parts(name: str):
+    """Return (first_initial, last_name) from either "First Last" or "Last, First".
+
+    Examples:
+      "Nicholas Lehman"      -> ("n", "lehman")
+      "Nick Lehman"          -> ("n", "lehman")
+      "Lehman, Nicholas"     -> ("n", "lehman")
+      "Pena Murillo, Nestor" -> ("n", "pena murillo")
+    """
+    if not name:
+        return None, None
+    cleaned = re.sub(r"\s+", " ", str(name)).strip()
+
+    if "," in cleaned:
+        # "Last, First" — everything before first comma is the last name
+        parts = cleaned.split(",", 1)
+        last = parts[0].strip().lower()
+        first = parts[1].strip().lower()
+    else:
+        # "First Last..." — first token is first name, rest is last name
+        tokens = cleaned.split()
+        first = tokens[0].lower()
+        last = " ".join(t.lower() for t in tokens[1:]) if len(tokens) > 1 else ""
+
+    first_initial = first[0] if first else ""
+    return first_initial, last
 
 
-
-def normalize_email(value: str):
-    """Normalize email address for case-insensitive matching."""
-    if not value:
-        return ""
-    return str(value).strip().lower()
+def normalize_name(name):
+    """Return a (first_initial, last_name) tuple used as the match key."""
+    return parse_name_parts(name)
 
 
-def find_column_optional(headers, expected):
-    """Return the matching header or None if not found."""
-    try:
-        return find_column(headers, expected)
-    except KeyError:
-        return None
+def names_match(a, b) -> bool:
+    """Match two names by first initial + last name.
 
+    Handles nicknames (Nick/Nicholas both have initial "n") and
+    both "First Last" and "Last, First" formats.
+    """
+    a_initial, a_last = a
+    b_initial, b_last = b
+    if not a_last or not b_last:
+        return False
+    return a_initial == b_initial and a_last == b_last
 
 
 def parse_duration(value):
@@ -92,28 +122,13 @@ def find_column(headers, expected):
     raise KeyError(f"Missing required column '{expected}'. Available: {headers}")
 
 
-def load_xlsx(path):
-    """Load an xlsx file and return rows as a list of lists of strings."""
-    try:
-        import openpyxl  # type: ignore[import]
-    except ImportError as exc:
-        raise ImportError(
-            "openpyxl is required to read .xlsx files. Install it with "
-            "`pip install openpyxl`."
-        ) from exc
-    wb = openpyxl.load_workbook(path, data_only=True)
-    ws = wb.active
-    rows = []
-    for row in ws.iter_rows(values_only=True):
-        rows.append([("" if cell is None else str(cell).strip()) for cell in row])
-    return rows
-
-
 def load_csv_with_encoding(path):
     """Try to load CSV/TSV with different encodings and delimiters.
 
-    Evaluates ALL encoding+delimiter pairs and picks the one with the highest
-    median column count, so a UTF-16 TSV is never mis-parsed as single-column CSV.
+    For each encoding that decodes successfully, score every delimiter by the
+    median number of columns it produces across non-empty rows.  Pick the
+    encoding+delimiter pair with the highest score so that a tab-separated file
+    is never mis-parsed as a single-column CSV just because commas are tried first.
     """
     import statistics
 
@@ -136,6 +151,10 @@ def load_csv_with_encoding(path):
                 non_empty = [row for row in rows if any(c.strip() for c in row)]
                 if not non_empty:
                     continue
+                # Score = median column count across non-empty rows.
+                # A UTF-16 TSV mis-parsed as UTF-8 gives single-column rows (score 1);
+                # correctly decoded it gives the real column count (score 7+).
+                # Evaluate ALL encoding+delimiter pairs and pick the highest scorer.
                 score = statistics.median(len(row) for row in non_empty)
                 if score > best_score:
                     best_score = score
@@ -146,14 +165,6 @@ def load_csv_with_encoding(path):
     if best_rows is not None:
         return best_rows
     raise ValueError(f"Could not decode file {path} with any supported encoding/delimiter")
-
-
-def load_file(path):
-    """Load either a .xlsx or a CSV/TSV file and return rows as list of lists of strings."""
-    ext = os.path.splitext(path)[1].lower()
-    if ext in ('.xlsx', '.xlsm'):
-        return load_xlsx(path)
-    return load_csv_with_encoding(path)
 
 
 def find_header_row(rows, required_keywords):
@@ -170,7 +181,7 @@ def find_header_row(rows, required_keywords):
 
 
 def load_attendance(path):
-    rows = load_file(path)
+    rows = load_csv_with_encoding(path)
 
     # Attendance file must have both 'Email' and 'Duration' columns
     header_row_idx = find_header_row(rows, ["email", "duration"])
@@ -209,20 +220,15 @@ def load_attendance(path):
         if duration < 30:
             continue  # Did not meet minimum attendance threshold
 
-        normalized_email = normalize_email(email)
-        if not normalized_email:
-            continue
-
-        # Avoid duplicates
-        if normalized_email not in {d.get("normalized_email") for d in data}:
-            record = {"attended": True, "normalized_email": normalized_email}
-            data.append(record)
+        key = normalize_name(name)
+        if key not in {d["normalized_name"] for d in data} and key != (None, None) and key[1]:
+            data.append({"normalized_name": key})
 
     return data
 
 
 def load_registered(path):
-    rows = load_file(path)
+    rows = load_csv_with_encoding(path)
 
     # Search all rows for a header containing both 'email' and 'score'
     header_row = None
@@ -259,15 +265,22 @@ def load_registered(path):
             "attended": False,
         })
 
-    return data, part1_col, part1_idx, headers, rows, header_row
+    return data, name_col, score_col, part1_col, headers, rows, header_row, name_idx, score_idx, part1_idx
+
+
+def normalize_output_path(output):
+    """Ensure output path ends with .csv without corrupting filenames."""
+    if not output.lower().endswith(('.csv', '.xlsx')):
+        output = output + '.csv'
+    return output
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Update registration scores based on Teams attendance (minimum 30 min required). Comparison uses email addresses."
     )
-    parser.add_argument("attendance_file", help="Teams attendance report with Email and Duration columns (.csv, .tsv, or .xlsx)")
-    parser.add_argument("registered_file", help="Registration/roster file with Email and Score columns (.csv, .tsv, or .xlsx)")
+    parser.add_argument("attendance_file", help="Teams attendance report (.csv, .tsv, or .xlsx)")
+    parser.add_argument("registered_file", help="Registration/roster file (.csv, .tsv, or .xlsx)")
     parser.add_argument(
         "--output",
         default="registered_scored.xlsx",

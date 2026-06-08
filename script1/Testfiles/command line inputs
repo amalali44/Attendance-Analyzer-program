@@ -16,7 +16,3 @@ python script.py "Testfiles/Virtual Training (VILT)_ Creating & managing Subcont
 - Overview and Navigation April 28, 2026 (.xlsx and .csv)
 python script.py "Testfiles/Virtual Training (VILT)_ Overview and Navigation concepts in PM4+ - Attendance report 4-28-26.csv" "Testfiles/pclltd-935b20c1-1325-4acf-883d-5888c206467d_SessionRoster.xlsx"
 
-
-
--Bluebeam
-python script.py "Testfiles/Virtual Training (VILT)_ Getting Started with Egnyte - Attendance report 5-14-26.csv" "Testfiles/pclltd-e97b6fc1-33a3-48ce-9f7e-41d73d0005a1_SessionRoster.xlsx"

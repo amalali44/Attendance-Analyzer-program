@@ -4,8 +4,15 @@ import os
 import sys
 from pathlib import Path
 
+<<<<<<< HEAD
 # Import the core functions from script.py (email-only matching)
 from script import load_attendance, load_registered
+=======
+
+# Import the core functions from script.py
+from script import load_attendance, load_registered
+
+>>>>>>> parent of a09d3a8 (who even knows whats going on atp)
 
 class AttendanceAnalyzerGUI:
     def __init__(self, root):
@@ -59,7 +66,7 @@ class AttendanceAnalyzerGUI:
         # Registered File Section
         registered_frame = tk.LabelFrame(
             self.root,
-            text="Step 2: Select PCL Learn Roster  File",
+            text="Step 2: Select Registration File",
             font=("Arial", 10, "bold"),
             padx=10,
             pady=10
@@ -237,10 +244,18 @@ class AttendanceAnalyzerGUI:
             attendee_emails = {a.get("normalized_email") for a in valid_attendees if a.get("normalized_email")}
             matched_count = 0
             for item in registered_data:
+<<<<<<< HEAD
                 item_email = item.get("normalized_email")
                 if item_email and item_email in attendee_emails:
                     item["attended"] = True
                     matched_count += 1
+=======
+                for attendee in valid_attendees:
+                    if item["normalized_name"] == attendee["normalized_name"]:
+                        item["attended"] = True
+                        matched_count += 1
+                        break
+>>>>>>> parent of a09d3a8 (who even knows whats going on atp)
             self.log_message(f"      Matched {matched_count} participants")
             
             # Update Part1 column
@@ -352,10 +367,18 @@ def run_command_line_interface():
         attendee_emails = {a.get("normalized_email") for a in valid_attendees if a.get("normalized_email")}
         matched_count = 0
         for item in registered_data:
+<<<<<<< HEAD
             item_email = item.get("normalized_email")
             if item_email and item_email in attendee_emails:
                 item["attended"] = True
                 matched_count += 1
+=======
+            for attendee in valid_attendees:
+                if item["normalized_name"] == attendee["normalized_name"]:
+                    item["attended"] = True
+                    matched_count += 1
+                    break
+>>>>>>> parent of a09d3a8 (who even knows whats going on atp)
         print(f"  Matched {matched_count} participants")
         
         # Update Part1 column

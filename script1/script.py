@@ -1,7 +1,49 @@
+<<<<<<< HEAD
 import argparse
 import re
 import csv
 import os
+=======
+import argparse, re, csv, os
+
+def parse_name_parts(name: str):
+    """Return normalized full name as "first last" lowercase, or empty string if invalid.
+
+    Handles "First Last" or "Last, First" formats.
+
+    Examples:
+      "Nicholas Lehman"      -> "nicholas lehman"
+      "Nick Lehman"          -> "nick lehman"
+      "Lehman, Nicholas"     -> "nicholas lehman"
+      "Pena Murillo, Nestor" -> "nestor pena murillo"
+      "B. Smith"             -> "b. smith"
+    """
+    suffixes = ['jr', 'sr', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'jr.', 'sr.', 'iii.', 'iv.', 'v.', 'vi.', 'vii.', 'viii.', 'ix.', 'x.']
+    
+    def clean_parts(parts):
+        return [p for p in parts if p.lower() not in suffixes and len(p) > 1]
+    
+    if not name:
+        return ""
+    cleaned = re.sub(r"\s+", " ", str(name)).strip()
+
+    if "," in cleaned:
+        parts = cleaned.split(",", 1)
+        last_parts = clean_parts(parts[0].strip().split())
+        first_parts = clean_parts(parts[1].strip().split())
+        last = " ".join(last_parts)
+        first = " ".join(first_parts)
+    else:
+        tokens = cleaned.split()
+        cleaned_tokens = clean_parts(tokens)
+        first = cleaned_tokens[0] if cleaned_tokens else ""
+        last = " ".join(cleaned_tokens[1:]) if len(cleaned_tokens) > 1 else ""
+
+    if last:
+        last = last.split()[0]
+    full = f"{first} {last}".strip().lower()
+    return full
+>>>>>>> parent of a09d3a8 (who even knows whats going on atp)
 
 
 def normalize_email(value: str):
@@ -240,7 +282,7 @@ def main():
 
     if args.output.lower().endswith('.xlsx'):
         try:
-            import openpyxl
+            import openpyxl  # type: ignore[import]
         except ImportError as exc:
             raise ImportError(
                 "openpyxl is required to write .xlsx files. Install it with "

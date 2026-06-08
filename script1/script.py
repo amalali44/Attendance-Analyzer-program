@@ -4,110 +4,11 @@ import csv
 import os
 
 
-def parse_name_parts(name: str):
-    """Return (first_initial, last_name) from either "First Last" or "Last, First".
-
-    Examples:
-      "Nicholas Lehman"      -> ("n", "lehman")
-      "Nick Lehman"          -> ("n", "lehman")
-      "Lehman, Nicholas"     -> ("n", "lehman")
-      "Pena Murillo, Nestor" -> ("n", "pena murillo")
-    """
-    if not name:
-        return None, None
-    cleaned = re.sub(r"\s+", " ", str(name)).strip()
-
-    if "," in cleaned:
-        # "Last, First" — everything before first comma is the last name
-        parts = cleaned.split(",", 1)
-        last = parts[0].strip().lower()
-        first = parts[1].strip().lower()
-    else:
-        # "First Last..." — first token is first name, rest is last name
-        tokens = cleaned.split()
-        first = tokens[0].lower()
-        last = " ".join(t.lower() for t in tokens[1:]) if len(tokens) > 1 else ""
-
-    first_initial = first[0] if first else ""
-    return first_initial, last
-
-
-def normalize_name(name):
-    """Return a (first_initial, last_name) tuple used as the match key."""
-    return parse_name_parts(name)
-
-
-def names_match(a, b) -> bool:
-    """Match two names by first initial + last name.
-
-    Handles nicknames (Nick/Nicholas both have initial "n") and
-    both "First Last" and "Last, First" formats.
-    """
-    a_initial, a_last = a
-    b_initial, b_last = b
-    if not a_last or not b_last:
-        return False
-    return a_initial == b_initial and a_last == b_last
-
-
-def parse_duration(value):
-    """Return duration in minutes, or None if unparseable.
-
-    Supported formats:
-      "1h 7m 19s"   (Teams attendance report export)
-      "58m 30s"
-      "45m"
-      "MM:SS"       (simple minutes:seconds)
-      "90"          (plain number, assumed minutes)
-      "90 min"
-    """
+def normalize_email(value: str):
+    """Normalize email address for case-insensitive matching."""
     if not value:
-        return None
-
-    text = str(value).strip()
-    if not text:
-        return None
-
-    # "Xh Ym Zs" / "Xh Ym" / "Ym Zs" / "Xh" — Teams export format
-    h = m_val = s = 0
-    matched = False
-    mh = re.search(r"(\d+)\s*h", text, re.I)
-    mm = re.search(r"(\d+)\s*m(?!in|s)", text, re.I)  # 'm' but not 'min' or 'ms'
-    ms = re.search(r"(\d+)\s*s(?!\w)", text, re.I)
-    if mh or mm or ms:
-        if mh:
-            h = int(mh.group(1))
-            matched = True
-        if mm:
-            m_val = int(mm.group(1))
-            matched = True
-        if ms:
-            s = int(ms.group(1))
-            matched = True
-        if matched:
-            return h * 60 + m_val + s / 60
-
-    # "X min" format
-    m_min = re.search(r"(\d+(?:\.\d+)?)\s*min", text, re.I)
-    if m_min:
-        return float(m_min.group(1))
-
-    # "MM:SS" format — only match if it looks like a short duration (no AM/PM nearby)
-    if re.search(r"^\d{1,3}:\d{2}$", text.strip()):
-        try:
-            parts = text.split(":")
-            minutes = int(parts[0])
-            seconds = int(parts[1])
-            return minutes + seconds / 60
-        except (ValueError, IndexError):
-            pass
-
-    # Plain number — assume minutes
-    m_num = re.search(r"^(\d+(?:\.\d+)?)$", text.strip())
-    if m_num:
-        return float(m_num.group(1))
-
-    return None
+        return ""
+    return str(value).strip().lower()
 
 
 def find_column(headers, expected):
@@ -122,14 +23,22 @@ def find_column(headers, expected):
     raise KeyError(f"Missing required column '{expected}'. Available: {headers}")
 
 
-def load_csv_with_encoding(path):
-    """Try to load CSV/TSV with different encodings and delimiters.
+def load_xlsx(path):
+    try:
+        import openpyxl  # type: ignore
+    except ImportError as exc:
+        raise ImportError(
+            "openpyxl is required to read .xlsx files. Install it with `pip install openpyxl`."
+        ) from exc
+    wb = openpyxl.load_workbook(path, data_only=True)
+    ws = wb.active
+    rows = []
+    for row in ws.iter_rows(values_only=True):
+        rows.append([("" if cell is None else str(cell).strip()) for cell in row])
+    return rows
 
-    For each encoding that decodes successfully, score every delimiter by the
-    median number of columns it produces across non-empty rows.  Pick the
-    encoding+delimiter pair with the highest score so that a tab-separated file
-    is never mis-parsed as a single-column CSV just because commas are tried first.
-    """
+
+def load_csv_with_encoding(path):
     import statistics
 
     encodings = ['utf-16', 'utf-8-sig', 'utf-8', 'latin-1', 'cp1252']
@@ -151,10 +60,6 @@ def load_csv_with_encoding(path):
                 non_empty = [row for row in rows if any(c.strip() for c in row)]
                 if not non_empty:
                     continue
-                # Score = median column count across non-empty rows.
-                # A UTF-16 TSV mis-parsed as UTF-8 gives single-column rows (score 1);
-                # correctly decoded it gives the real column count (score 7+).
-                # Evaluate ALL encoding+delimiter pairs and pick the highest scorer.
                 score = statistics.median(len(row) for row in non_empty)
                 if score > best_score:
                     best_score = score
@@ -167,12 +72,14 @@ def load_csv_with_encoding(path):
     raise ValueError(f"Could not decode file {path} with any supported encoding/delimiter")
 
 
+def load_file(path):
+    ext = os.path.splitext(path)[1].lower()
+    if ext in ('.xlsx', '.xlsm'):
+        return load_xlsx(path)
+    return load_csv_with_encoding(path)
+
+
 def find_header_row(rows, required_keywords):
-    """
-    Scan rows top-to-bottom and return the index of the first row whose cells
-    contain ALL of the required keywords (case-insensitive substring match).
-    Returns None if no such row is found.
-    """
     for i, row in enumerate(rows):
         cells_lower = [c.strip().lower() for c in row if c and c.strip()]
         if all(any(kw in cell for cell in cells_lower) for kw in required_keywords):
@@ -180,12 +87,50 @@ def find_header_row(rows, required_keywords):
     return None
 
 
+def parse_duration(value):
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+
+    h = m_val = s = 0
+    mh = re.search(r"(\d+)\s*h", text, re.I)
+    mm = re.search(r"(\d+)\s*m(?!in|s)", text, re.I)
+    ms = re.search(r"(\d+)\s*s(?!\w)", text, re.I)
+    if mh or mm or ms:
+        if mh:
+            h = int(mh.group(1))
+        if mm:
+            m_val = int(mm.group(1))
+        if ms:
+            s = int(ms.group(1))
+        return h * 60 + m_val + s / 60
+
+    m_min = re.search(r"(\d+(?:\.\d+)?)\s*min", text, re.I)
+    if m_min:
+        return float(m_min.group(1))
+
+    if re.search(r"^\d{1,3}:\d{2}$", text.strip()):
+        try:
+            parts = text.split(":")
+            minutes = int(parts[0])
+            seconds = int(parts[1])
+            return minutes + seconds / 60
+        except (ValueError, IndexError):
+            pass
+
+    m_num = re.search(r"^(\d+(?:\.\d+)?)$", text.strip())
+    if m_num:
+        return float(m_num.group(1))
+
+    return None
+
+
 def load_attendance(path):
-    rows = load_csv_with_encoding(path)
+    rows = load_file(path)
 
-    # Attendance file must have both 'Email' and 'Duration' columns
     header_row_idx = find_header_row(rows, ["email", "duration"])
-
     if header_row_idx is None:
         raise ValueError(
             "Attendance file: could not find a header row containing both 'Email' and 'Duration' columns.\n"
@@ -193,7 +138,6 @@ def load_attendance(path):
         )
 
     headers = [h.strip() for h in rows[header_row_idx]]
-
     try:
         email_col = find_column(headers, "email")
         duration_col = find_column(headers, "duration")
@@ -205,32 +149,28 @@ def load_attendance(path):
 
     data = []
     for row in rows[header_row_idx + 1:]:
-        if not row or not row[email_idx].strip():
+        if not row or len(row) <= email_idx or not row[email_idx].strip():
             continue
-
         email = row[email_idx].strip() if email_idx < len(row) else ""
         duration_str = row[duration_idx].strip() if duration_idx < len(row) else ""
-        
         if not email:
             continue
-
         duration = parse_duration(duration_str)
         if duration is None:
             continue
         if duration < 30:
-            continue  # Did not meet minimum attendance threshold
-
-        key = normalize_name(name)
-        if key not in {d["normalized_name"] for d in data} and key != (None, None) and key[1]:
-            data.append({"normalized_name": key})
-
+            continue
+        normalized_email = normalize_email(email)
+        if not normalized_email:
+            continue
+        if normalized_email not in {d.get("normalized_email") for d in data}:
+            data.append({"attended": True, "normalized_email": normalized_email})
     return data
 
 
 def load_registered(path):
-    rows = load_csv_with_encoding(path)
+    rows = load_file(path)
 
-    # Search all rows for a header containing both 'email' and 'score'
     header_row = None
     for i, row in enumerate(rows):
         headers_candidate = [h.strip() for h in row if h and h.strip()]
@@ -244,8 +184,8 @@ def load_registered(path):
         raise KeyError("Could not find a header row with both 'Email' and 'Score' columns in registered file")
 
     headers = [h.strip() for h in rows[header_row]]
-    find_column(headers, "email")  # Validate email column exists
-    find_column(headers, "score")  # Validate score column exists
+    find_column(headers, "email")
+    find_column(headers, "score")
     part1_col = find_column(headers, "part1")
     email_col = find_column(headers, "email")
 
@@ -260,19 +200,9 @@ def load_registered(path):
         normalized_email = normalize_email(email_value)
         if not normalized_email:
             continue
-        data.append({
-            "normalized_email": normalized_email,
-            "attended": False,
-        })
+        data.append({"normalized_email": normalized_email, "attended": False})
 
-    return data, name_col, score_col, part1_col, headers, rows, header_row, name_idx, score_idx, part1_idx
-
-
-def normalize_output_path(output):
-    """Ensure output path ends with .csv without corrupting filenames."""
-    if not output.lower().endswith(('.csv', '.xlsx')):
-        output = output + '.csv'
-    return output
+    return data, part1_col, part1_idx, headers, rows, header_row
 
 
 def main():
@@ -294,10 +224,8 @@ def main():
     valid_attendees = load_attendance(args.attendance_file)
     registered_data, part1_col, part1_idx, headers, rows, header_row = load_registered(args.registered_file)
 
-    # Create a set of normalized emails from attendees for efficient lookup
     attendee_emails = {attendee.get("normalized_email") for attendee in valid_attendees if attendee.get("normalized_email")}
 
-    # Match registered participants to attendees using email
     for item in registered_data:
         item_email = item.get("normalized_email", "")
         if item_email and item_email in attendee_emails:

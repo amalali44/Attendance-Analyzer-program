@@ -4,15 +4,9 @@ import os
 import sys
 from pathlib import Path
 
-<<<<<<< HEAD
-# Import the core functions from script.py (email-only matching)
-from script import load_attendance, load_registered
-=======
-
 # Import the core functions from script.py
-from script import load_attendance, load_registered
+from script import load_attendance, load_registered, get_backup_key
 
->>>>>>> parent of a09d3a8 (who even knows whats going on atp)
 
 class AttendanceAnalyzerGUI:
     def __init__(self, root):
@@ -66,7 +60,7 @@ class AttendanceAnalyzerGUI:
         # Registered File Section
         registered_frame = tk.LabelFrame(
             self.root,
-            text="Step 2: Select Registration File",
+            text="Step 2: Select PCL Learn Roster  File",
             font=("Arial", 10, "bold"),
             padx=10,
             pady=10
@@ -239,23 +233,19 @@ class AttendanceAnalyzerGUI:
             registered_data, part1_col, part1_idx, headers, rows, header_row = load_registered(registered_path)
             self.log_message(f"      Found {len(registered_data)} registered participants")
             
-            # Match attendees using email only
-            self.log_message("\n[3/4] Matching attendees to registrations (by email)...")
-            attendee_emails = {a.get("normalized_email") for a in valid_attendees if a.get("normalized_email")}
+            # Match attendees
+            self.log_message("\n[3/4] Matching attendees to registrations...")
             matched_count = 0
             for item in registered_data:
-<<<<<<< HEAD
-                item_email = item.get("normalized_email")
-                if item_email and item_email in attendee_emails:
-                    item["attended"] = True
-                    matched_count += 1
-=======
+                item_backup = get_backup_key(item["normalized_name"])
                 for attendee in valid_attendees:
-                    if item["normalized_name"] == attendee["normalized_name"]:
+                    attendee_backup = get_backup_key(attendee["normalized_name"])
+                    if (item["normalized_name"] == attendee["normalized_name"] or 
+                        item_backup == attendee_backup or 
+                        item_backup[1] in attendee["normalized_name"]):
                         item["attended"] = True
                         matched_count += 1
                         break
->>>>>>> parent of a09d3a8 (who even knows whats going on atp)
             self.log_message(f"      Matched {matched_count} participants")
             
             # Update Part1 column
@@ -362,23 +352,19 @@ def run_command_line_interface():
         registered_data, part1_col, part1_idx, headers, rows, header_row = load_registered(registered_file)
         print(f"  Found {len(registered_data)} registered participants")
         
-        # Match attendees using email only
-        print("Matching attendees to registrations (by email)...")
-        attendee_emails = {a.get("normalized_email") for a in valid_attendees if a.get("normalized_email")}
+        # Match attendees
+        print("Matching attendees to registrations...")
         matched_count = 0
         for item in registered_data:
-<<<<<<< HEAD
-            item_email = item.get("normalized_email")
-            if item_email and item_email in attendee_emails:
-                item["attended"] = True
-                matched_count += 1
-=======
+            item_backup = get_backup_key(item["normalized_name"])
             for attendee in valid_attendees:
-                if item["normalized_name"] == attendee["normalized_name"]:
+                attendee_backup = get_backup_key(attendee["normalized_name"])
+                if (item["normalized_name"] == attendee["normalized_name"] or 
+                    item_backup == attendee_backup or 
+                    item_backup[1] in attendee["normalized_name"]):
                     item["attended"] = True
                     matched_count += 1
                     break
->>>>>>> parent of a09d3a8 (who even knows whats going on atp)
         print(f"  Matched {matched_count} participants")
         
         # Update Part1 column

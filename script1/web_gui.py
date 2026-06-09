@@ -288,12 +288,12 @@ def index():
                 valid_attendees = load_attendance(attendance_path)
                 registered_data, part1_col, part1_idx, headers, rows, header_row = load_registered(registration_path)
                 
-                # Match attendees to registered participants using email
-                attendee_emails = {a.get("normalized_email") for a in valid_attendees if a.get("normalized_email")}
+                # Match attendees to registered participants
                 for item in registered_data:
-                    item_email = item.get("normalized_email")
-                    if item_email and item_email in attendee_emails:
-                        item["attended"] = True
+                    for attendee in valid_attendees:
+                        if item["normalized_name"] == attendee["normalized_name"]:
+                            item["attended"] = True
+                            break
                 
                 for item_idx, item in enumerate(registered_data):
                     row_idx = header_row + 1 + item_idx
